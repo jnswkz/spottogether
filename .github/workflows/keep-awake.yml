@@ -1,0 +1,24 @@
+name: keep-awake
+
+# Giu cho app tren Render free khoi ngu, CHI trong khung gio dung:
+# Thu 2-6, 08:00-21:00 gio Viet Nam (UTC+7).
+# Cron cua GitHub Actions tinh theo UTC: 08h VN = 01h UTC, 21h VN = 14h UTC.
+on:
+  schedule:
+    - cron: '*/10 1-13 * * 1-5' # moi 10 phut, gio UTC 1-13, T2-T6
+  workflow_dispatch: {} # cho phep bam chay tay de test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /healthz
+        run: |
+          if [ -z "${{ vars.PING_URL }}" ]; then
+            echo "Chua dat bien PING_URL."
+            echo "Vao Settings > Secrets and variables > Actions > Variables,"
+            echo "them PING_URL = https://<ten-app>.onrender.com/healthz"
+            exit 0
+          fi
+          echo "Ping: ${{ vars.PING_URL }}"
+          curl -fsS --max-time 60 "${{ vars.PING_URL }}" && echo " -> OK"

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpotTogether — Nghe nhạc cùng nhau</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>🎧 SpotTogether</h1>
+      <p class="sub">Nghe Spotify cùng nhau — mỗi người nghe trên máy mình, host điều khiển cả phòng.</p>
+
+      <p id="status" class="status">Đang tải…</p>
+
+      <button id="login-btn" class="primary" style="display: none">
+        Đăng nhập Spotify
+      </button>
+
+      <section id="app" style="display: none">
+        <div class="row">
+          <input id="name" placeholder="Tên của bạn" />
+          <input id="room-id" placeholder="Mã phòng (vd: lofi)" value="main" />
+          <button id="join-btn" class="primary">Vào phòng</button>
+          <button id="logout-btn" class="ghost">Đăng xuất</button>
+        </div>
+
+        <h2 id="room-title"></h2>
+
+        <div id="host-controls" style="display: none" class="card">
+          <h3>Điều khiển (Host)</h3>
+          <div class="row">
+            <input id="track-uri" placeholder="Dán link hoặc URI bài hát Spotify" />
+            <button id="play-btn" class="primary">Phát cho cả phòng</button>
+          </div>
+          <div class="row">
+            <button id="toggle-btn" class="ghost">Play / Pause</button>
+          </div>
+          <small>Mở Spotify, chuột phải 1 bài → Chia sẻ → Sao chép link, rồi dán vào đây.</small>
+        </div>
+
+        <div class="card">
+          <h3>Thành viên</h3>
+          <ul id="members"></ul>
+        </div>
+
+        <div class="card">
+          <h3>Nhật ký</h3>
+          <pre id="log"></pre>
+        </div>
+      </section>
+    </main>
+
+    <!-- Socket.io client (do server tu phuc vu) -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

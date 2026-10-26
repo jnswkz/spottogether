@@ -5,6 +5,7 @@ const SCOPES = [
   'user-read-playback-state',    // doc thiet bi + trang thai phat cua app Spotify
   'user-modify-playback-state',  // dieu khien play/pause/seek tren app Spotify (can Premium)
   'user-read-currently-playing',
+  'user-read-private',           // doc loai tai khoan (product: premium/free)
 ].join(' ');
 
 function randomString(len) {

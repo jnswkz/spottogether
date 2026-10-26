@@ -84,6 +84,18 @@ async function showApp() {
   $('logout-btn').style.display = 'inline-flex';
   $('app').style.display = 'block';
   $('device-card').style.display = 'block';
+
+  // Kiem tra loai tai khoan: kieu B BAT BUOC Premium moi dieu khien phat duoc.
+  const me = await api('me').then((r) => r.json()).catch(() => ({}));
+  const product = me.product || '?';
+  if (product === 'premium') {
+    log('Tài khoản: Premium ✓');
+  } else {
+    log('Tài khoản: ' + product + ' — KHÔNG phải Premium, không điều khiển phát được!');
+    $('status').textContent =
+      'Tài khoản "' + product + '" không phải Premium → chỉ xem được, KHÔNG phát/điều khiển được (đây là giới hạn của Spotify, không phải lỗi app).';
+  }
+
   await fetchDevices();
   setInterval(pollHost, 1000); // chi chay khi la host (guard ben trong)
 }
@@ -332,6 +344,7 @@ async function playTrack(uri, positionMs, play) {
     return log('Chưa chọn thiết bị Spotify');
   }
 
+  log(`Phát "${uri.split(':').pop()}" → thiết bị ${dev.slice(0, 8)}…`);
   // Phat bai tren thiet bi da chon (thiet bi can dang active: mo app Spotify
   // va phat tay 1 bai truoc). device_id trong URL se tu chuyen phat ve dung may.
   const r = await api(`me/player/play?device_id=${dev}`, {

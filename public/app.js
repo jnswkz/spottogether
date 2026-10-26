@@ -370,6 +370,8 @@ async function playTrack(uri, positionMs, play) {
       .catch(() => null);
     if (!chk || !chk.item) {
       log('↳ Sau 1.2s: Spotify KHÔNG phát gì — lệnh bị bỏ qua.');
+      $('status').textContent =
+        '⚠ App Spotify đang DỪNG nên không nhận lệnh. Mở app Spotify, tự bấm phát 1 bài (đang kêu), rồi bấm Phát lại.';
     } else {
       const ok = chk.item.uri === uri ? '✓ đúng bài' : '✗ SAI bài (vẫn bài cũ)';
       log(`↳ Sau 1.2s: "${chk.item.name}" · ${chk.is_playing ? 'đang phát' : 'dừng'} · ${chk.device?.name} · ${ok}`);

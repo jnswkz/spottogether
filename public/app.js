@@ -179,7 +179,17 @@ async function pollHost() {
     return;
   }
   const d = await res.json().catch(() => null);
-  if (!d || !d.item) return;
+  if (!d || !d.item) {
+    // Thiet bi active nhung chua co bai nao thuc su phat.
+    if (d && d.device) {
+      const dbg = `Thiết bị "${d.device.name}" active nhưng chưa phát bài (loại: ${d.currently_playing_type || '?'}).`;
+      if (dbg !== window.__lastDbg) {
+        window.__lastDbg = dbg;
+        log(dbg);
+      }
+    }
+    return;
+  }
   const cur = d.item;
   updateNowPlaying({
     name: cur.name,
@@ -321,11 +331,29 @@ async function playTrack(uri, positionMs, play) {
     $('status').textContent = 'Hãy chọn thiết bị Spotify để phát (mở app Spotify rồi Làm mới).';
     return log('Chưa chọn thiết bị Spotify');
   }
-  await api(`me/player/play?device_id=${dev}`, {
+
+  // Buoc 1: chuyen/danh thuc thiet bi (fix "204 nhung khong keu" khi thiet bi dang nghi).
+  await api('me/player', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device_ids: [dev], play: false }),
+  }).catch(() => {});
+
+  // Buoc 2: phat bai.
+  const r = await api(`me/player/play?device_id=${dev}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, positionMs) }),
   });
+  if (r.status >= 400) {
+    const j = await r.json().catch(() => ({}));
+    const reason = j.error?.reason || j.error?.message || r.status;
+    log('Lỗi phát (' + r.status + '): ' + reason);
+    $('status').textContent = 'Không phát được: ' + reason;
+  } else {
+    log('Đã gửi lệnh phát (' + r.status + ') tới thiết bị');
+  }
+
   if (!play) await api(`me/player/pause?device_id=${dev}`, { method: 'PUT' });
 }
 

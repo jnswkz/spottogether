@@ -332,14 +332,8 @@ async function playTrack(uri, positionMs, play) {
     return log('Chưa chọn thiết bị Spotify');
   }
 
-  // Buoc 1: chuyen/danh thuc thiet bi (fix "204 nhung khong keu" khi thiet bi dang nghi).
-  await api('me/player', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_ids: [dev], play: false }),
-  }).catch(() => {});
-
-  // Buoc 2: phat bai.
+  // Phat bai tren thiet bi da chon (thiet bi can dang active: mo app Spotify
+  // va phat tay 1 bai truoc). device_id trong URL se tu chuyen phat ve dung may.
   const r = await api(`me/player/play?device_id=${dev}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

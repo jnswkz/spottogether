@@ -1,2 +1,6 @@
 node_modules/
 .env
+
+# Bo qua lockfile: moi truong local tro ve Nexus noi bo, se lam hong build tren cloud.
+# Khong co lockfile thi Render/Northflank tu cai tu registry cong khai.
+package-lock.json

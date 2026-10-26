@@ -2,11 +2,9 @@
 // PKCE khong can client_secret -> chay hoan toan phia trinh duyet an toan.
 
 const SCOPES = [
-  'streaming',                   // bat buoc cho Web Playback SDK
-  'user-read-email',
-  'user-read-private',
-  'user-read-playback-state',
-  'user-modify-playback-state',  // bat buoc de dieu khien play/pause/seek (kieu B)
+  'user-read-playback-state',    // doc thiet bi + trang thai phat cua app Spotify
+  'user-modify-playback-state',  // dieu khien play/pause/seek tren app Spotify (can Premium)
+  'user-read-currently-playing',
 ].join(' ');
 
 function randomString(len) {

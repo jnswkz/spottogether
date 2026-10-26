@@ -1,15 +1,25 @@
 import { login, handleCallback, getValidToken, logout } from './auth.js';
 
+// KIEN TRUC: web app chi DIEU KHIEN. Nhac phat tren APP SPOTIFY cua moi nguoi
+// (dien thoai / may tinh), khong phat trong trinh duyet. Khong dung Web Playback SDK;
+// moi lenh phat/dung deu goi Web API /me/player toi THIET BI Spotify da chon.
+
 let CONFIG = { clientId: '', redirectUri: '' };
 let socket = null;
-let player = null;
-let deviceId = null;
 let isHost = false;
-let lastPushed = 0;
+let playing = false;
 
-// Theo doi de phat hien bai nhac ket thuc (chi host) -> tu chuyen bai.
+// Host doc trang thai bang cach poll /me/player; chi gui khi CO thay doi.
+let hostLastUri = null;
+let hostLastPlaying = null;
 let lastTrackId = null;
-let lastPos = 0;
+let lastProgress = 0;
+
+// Listener chi hanh dong khi bai / play-pause doi (tranh phat lai moi giay).
+let lsTrack = null;
+let lsPlaying = null;
+
+let currentQueue = [];
 
 const $ = (id) => document.getElementById(id);
 const log = (msg) => {
@@ -18,7 +28,6 @@ const log = (msg) => {
 };
 
 // ---------- Icon SVG ----------
-// [isFill, innerSVG]
 const ICONS = {
   play: [true, '<polygon points="6 4 20 12 6 20 6 4"/>'],
   pause: [true, '<rect x="6" y="4" width="4.5" height="16" rx="1"/><rect x="13.5" y="4" width="4.5" height="16" rx="1"/>'],
@@ -27,16 +36,23 @@ const ICONS = {
   crown: [true, '<path d="M3 7l4 4 5-7 5 7 4-4-2 12H5L3 7z"/>'],
   user: [false, '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'],
 };
-
 function icon(name, size = 18) {
   const [fill, inner] = ICONS[name];
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill ? 'currentColor' : 'none'}" stroke="${fill ? 'none' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
 }
-
 function escapeHtml(s = '') {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
   );
+}
+
+// ---------- Goi Web API ----------
+async function api(path, opts = {}) {
+  const token = await getValidToken(CONFIG.clientId);
+  return fetch('https://api.spotify.com/v1/' + path, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+  });
 }
 
 // ---------- Khoi tao ----------
@@ -46,15 +62,12 @@ async function init() {
     $('status').textContent = 'Chưa cấu hình SPOTIFY_CLIENT_ID — xem README.';
     return;
   }
-
   if (location.search.includes('code=')) {
     await handleCallback(CONFIG.clientId, CONFIG.redirectUri);
   }
-
   const token = await getValidToken(CONFIG.clientId);
-  if (token) {
-    showApp();
-  } else {
+  if (token) showApp();
+  else {
     $('status').textContent = 'Hãy đăng nhập bằng tài khoản Spotify Premium.';
     $('login-btn').style.display = 'inline-flex';
   }
@@ -66,71 +79,40 @@ $('logout-btn').onclick = () => {
   location.reload();
 };
 
-function showApp() {
+async function showApp() {
   $('login-btn').style.display = 'none';
   $('logout-btn').style.display = 'inline-flex';
   $('app').style.display = 'block';
-  $('status').textContent = 'Đang khởi tạo trình phát…';
-  loadSDK();
+  $('device-card').style.display = 'block';
+  await fetchDevices();
+  setInterval(pollHost, 1000); // chi chay khi la host (guard ben trong)
 }
 
-// ---------- Web Playback SDK ----------
-function loadSDK() {
-  window.onSpotifyWebPlaybackSDKReady = () => {
-    player = new Spotify.Player({
-      name: 'SpotTogether',
-      getOAuthToken: async (cb) => cb(await getValidToken(CONFIG.clientId)),
-      volume: 0.8,
-    });
-
-    player.addListener('ready', ({ device_id }) => {
-      deviceId = device_id;
-      $('status').textContent = 'Đã kết nối trình phát ✓  Hãy vào một phòng.';
-      log('Trình phát sẵn sàng');
-    });
-    player.addListener('authentication_error', ({ message }) => log('Lỗi xác thực: ' + message));
-    player.addListener('account_error', () => log('Tài khoản KHÔNG phải Premium.'));
-
-    player.addListener('player_state_changed', (state) => {
-      if (!state) return;
-      updateNowPlaying({
-        name: state.track_window.current_track.name,
-        artists: state.track_window.current_track.artists.map((a) => a.name).join(', '),
-        image: state.track_window.current_track.album.images?.[0]?.url,
-        isPlaying: !state.paused,
-      });
-      if (!isHost) return;
-
-      // Phat hien ket thuc bai: bai dang phat (lastPos>0) nay paused o vi tri 0.
-      const cur = state.track_window.current_track;
-      if (state.paused && state.position === 0 && lastTrackId === cur.id && lastPos > 1000) {
-        log('Bài kết thúc — chuyển bài tiếp theo');
-        socket.emit('queue-next');
-      }
-      lastTrackId = cur.id;
-      lastPos = state.position;
-
-      // Day trang thai cho ca phong (kem metadata de hien now-playing).
-      const now = Date.now();
-      if (now - lastPushed < 250) return;
-      lastPushed = now;
-      socket.emit('state', {
-        trackUri: cur.uri,
-        positionMs: state.position,
-        isPlaying: !state.paused,
-        name: cur.name,
-        artists: cur.artists.map((a) => a.name).join(', '),
-        image: cur.album.images?.[0]?.url,
-      });
-    });
-
-    player.connect();
-  };
-
-  const s = document.createElement('script');
-  s.src = 'https://sdk.scdn.co/spotify-player.js';
-  document.body.appendChild(s);
+// ---------- Thiet bi Spotify ----------
+async function fetchDevices() {
+  const res = await api('me/player/devices');
+  const data = await res.json().catch(() => ({}));
+  const devices = data.devices || [];
+  const sel = $('device-select');
+  if (!devices.length) {
+    sel.innerHTML = '<option value="">— Chưa thấy thiết bị nào —</option>';
+    $('status').textContent = 'Mở app Spotify (điện thoại/máy tính), phát thử 1 bài, rồi bấm Làm mới.';
+    return;
+  }
+  const prev = sel.value;
+  sel.innerHTML = devices
+    .map((d) => `<option value="${d.id}"${d.is_active ? ' selected' : ''}>${escapeHtml(d.name)} · ${escapeHtml(d.type)}</option>`)
+    .join('');
+  if (prev && devices.some((d) => d.id === prev)) sel.value = prev;
+  $('status').textContent = 'Sẵn sàng. Thiết bị phát: ' + (sel.selectedOptions[0]?.textContent || '');
 }
+function selectedDevice() {
+  return $('device-select').value || '';
+}
+$('device-refresh').onclick = fetchDevices;
+$('device-select').onchange = () => {
+  $('status').textContent = 'Thiết bị phát: ' + ($('device-select').selectedOptions[0]?.textContent || '');
+};
 
 // ---------- Vao phong ----------
 $('join-btn').onclick = () => {
@@ -146,7 +128,6 @@ $('join-btn').onclick = () => {
 function bindSocket() {
   socket.on('joined', ({ roomId, isHost: host, state, queue }) => {
     isHost = host;
-    $('joinbar') && $('join-btn') && ($('join-btn').textContent = 'Đổi phòng');
     const badge = $('room-badge');
     badge.className = 'badge' + (host ? ' host' : '');
     badge.innerHTML = host
@@ -156,17 +137,15 @@ function bindSocket() {
     $('now-card').style.display = 'flex';
     $('host-controls').style.display = host ? 'flex' : 'none';
     log(host ? 'Bạn là Host — điều khiển cả phòng' : 'Đã vào phòng, chờ host phát nhạc');
-
     renderQueue(queue || []);
-    if (state) applySync(state);
-    else socket.emit('request-sync');
+    if (state && !host) applySync(state);
   });
 
   socket.on('promoted', () => {
     isHost = true;
     $('room-badge').className = 'badge host';
     $('host-controls').style.display = 'flex';
-    renderQueue(currentQueue); // ve lai nut xoa
+    renderQueue(currentQueue);
     log('Host cũ đã rời — bạn được nâng làm Host');
   });
 
@@ -175,12 +154,60 @@ function bindSocket() {
   socket.on('sync', (state) => {
     if (!isHost) applySync(state);
   });
-  // Host nhan lenh phat bai tiep theo tu hang doi.
   socket.on('play-track', (track) => playTrack(track.uri, 0, true));
+}
+
+// ---------- Host: doc trang thai app Spotify ----------
+async function pollHost() {
+  if (!isHost) return;
+  let res;
+  try {
+    res = await api('me/player');
+  } catch {
+    return;
+  }
+  if (res.status === 204) {
+    // Khong co gi phat: neu vua phat xong 1 bai -> chuyen bai tiep theo.
+    if (lastTrackId && lastProgress > 1000) {
+      lastTrackId = null;
+      lastProgress = 0;
+      if (currentQueue.length) {
+        log('Bài kết thúc — chuyển bài tiếp theo');
+        socket.emit('queue-next');
+      }
+    }
+    return;
+  }
+  const d = await res.json().catch(() => null);
+  if (!d || !d.item) return;
+  const cur = d.item;
+  updateNowPlaying({
+    name: cur.name,
+    artists: cur.artists.map((a) => a.name).join(', '),
+    image: cur.album.images?.[0]?.url,
+    isPlaying: d.is_playing,
+  });
+  lastTrackId = cur.id;
+  lastProgress = d.progress_ms;
+
+  // Chi broadcast khi doi bai hoac doi play/pause (tranh spam).
+  if (cur.uri !== hostLastUri || d.is_playing !== hostLastPlaying) {
+    hostLastUri = cur.uri;
+    hostLastPlaying = d.is_playing;
+    socket.emit('state', {
+      trackUri: cur.uri,
+      positionMs: d.progress_ms,
+      isPlaying: d.is_playing,
+      name: cur.name,
+      artists: cur.artists.map((a) => a.name).join(', '),
+      image: cur.album.images?.[0]?.url,
+    });
+  }
 }
 
 // ---------- Now playing ----------
 function updateNowPlaying({ name, artists, image, isPlaying }) {
+  playing = !!isPlaying;
   $('np-title').textContent = name || '—';
   $('np-artist').textContent = artists || '';
   if (image) $('np-art').src = image;
@@ -191,11 +218,7 @@ function updateNowPlaying({ name, artists, image, isPlaying }) {
 async function doSearch() {
   const q = $('search-input').value.trim();
   if (!q) return;
-  const token = await getValidToken(CONFIG.clientId);
-  const res = await fetch(
-    `https://api.spotify.com/v1/search?type=track&limit=8&q=${encodeURIComponent(q)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const res = await api(`search?type=track&limit=8&q=${encodeURIComponent(q)}`);
   const data = await res.json();
   renderResults(data.tracks?.items || []);
 }
@@ -212,18 +235,16 @@ function toTrack(t) {
     image: t.album.images?.[2]?.url || t.album.images?.[0]?.url || '',
   };
 }
-
-function trackRow(tr, inner) {
+function trackRow(tr, actions) {
   return `<li class="track">
     <img src="${escapeHtml(tr.image)}" alt="" />
     <div class="t-meta">
       <span class="t-name">${escapeHtml(tr.name)}</span>
       <span class="t-sub">${escapeHtml(tr.artists)}${tr.addedBy ? ' · ' + escapeHtml(tr.addedBy) : ''}</span>
     </div>
-    <div class="t-actions">${inner}</div>
+    <div class="t-actions">${actions}</div>
   </li>`;
 }
-
 function renderResults(items) {
   const tracks = items.map(toTrack);
   window.__results = tracks;
@@ -235,7 +256,6 @@ function renderResults(items) {
     })
     .join('');
 }
-
 $('results').addEventListener('click', (e) => {
   const addBtn = e.target.closest('[data-add]');
   const playBtn = e.target.closest('[data-play]');
@@ -250,7 +270,6 @@ $('results').addEventListener('click', (e) => {
 });
 
 // ---------- Hang doi ----------
-let currentQueue = [];
 function renderQueue(queue) {
   currentQueue = queue || [];
   $('queue-count').textContent = currentQueue.length;
@@ -270,14 +289,19 @@ function renderQueue(queue) {
     })
     .join('');
 }
-
 $('queue').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del]');
   if (del && isHost) socket.emit('queue-remove', +del.dataset.del);
 });
-
 $('next-btn').onclick = () => isHost && socket.emit('queue-next');
-$('toggle-btn').onclick = () => player && player.togglePlay();
+
+// Host play/pause tren app Spotify qua Web API.
+$('toggle-btn').onclick = async () => {
+  if (!isHost) return;
+  const dev = selectedDevice();
+  if (!dev) return log('Chưa chọn thiết bị Spotify');
+  await api(`me/player/${playing ? 'pause' : 'play'}?device_id=${dev}`, { method: 'PUT' });
+};
 
 // ---------- Thanh vien ----------
 function renderMembers(room) {
@@ -290,30 +314,39 @@ function renderMembers(room) {
     .join('');
 }
 
-// ---------- Phat & dong bo ----------
-async function playTrack(trackUri, positionMs, play) {
-  if (!deviceId) return log('Trình phát chưa sẵn sàng');
-  const token = await getValidToken(CONFIG.clientId);
-  await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uris: [trackUri], position_ms: Math.max(0, positionMs) }),
-  });
-  if (!play) {
-    await fetch('https://api.spotify.com/v1/me/player/pause', {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+// ---------- Phat tren thiet bi da chon ----------
+async function playTrack(uri, positionMs, play) {
+  const dev = selectedDevice();
+  if (!dev) {
+    $('status').textContent = 'Hãy chọn thiết bị Spotify để phát (mở app Spotify rồi Làm mới).';
+    return log('Chưa chọn thiết bị Spotify');
   }
+  await api(`me/player/play?device_id=${dev}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, positionMs) }),
+  });
+  if (!play) await api(`me/player/pause?device_id=${dev}`, { method: 'PUT' });
 }
 
-// Nguoi nghe: khop theo trang thai host (bu do tre mang).
+// ---------- Listener: khop theo host (chi khi doi bai / play-pause) ----------
 async function applySync(state) {
   updateNowPlaying(state);
-  const elapsed = state.isPlaying ? Date.now() - state.serverTs : 0;
-  const target = state.positionMs + elapsed;
-  log(`Đồng bộ: ${state.isPlaying ? 'phát' : 'dừng'} @ ${(target / 1000).toFixed(1)}s`);
-  await playTrack(state.trackUri, target, state.isPlaying);
+  const changedTrack = state.trackUri !== lsTrack;
+  const changedPlay = state.isPlaying !== lsPlaying;
+  lsTrack = state.trackUri;
+  lsPlaying = state.isPlaying;
+
+  if (changedTrack) {
+    const elapsed = state.isPlaying ? Date.now() - state.serverTs : 0;
+    log('Đồng bộ bài mới @ ' + ((state.positionMs + elapsed) / 1000).toFixed(1) + 's');
+    await playTrack(state.trackUri, state.positionMs + elapsed, state.isPlaying);
+  } else if (changedPlay) {
+    const dev = selectedDevice();
+    if (!dev) return;
+    await api(`me/player/${state.isPlaying ? 'play' : 'pause'}?device_id=${dev}`, { method: 'PUT' });
+  }
+  // Cung bai + cung trang thai -> khong lam gi (de nhac chay tiep).
 }
 
 init();

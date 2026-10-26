@@ -123,6 +123,19 @@ input {
 }
 input:focus { outline: none; border-color: var(--green); }
 
+select {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 10px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0a0a0d;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+select:focus { outline: none; border-color: var(--green); }
+
 .roombar { margin: 4px 2px 0; }
 .badge {
   display: inline-flex;

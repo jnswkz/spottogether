@@ -16,7 +16,7 @@
           </svg>
           <div>
             <h1>SpotTogether</h1>
-            <p class="sub">Nghe Spotify cùng nhau — host điều khiển, cả phòng nghe chung.</p>
+            <p class="sub">Điều khiển chung — nhạc phát trên app Spotify của mỗi người.</p>
           </div>
         </div>
         <button id="logout-btn" class="icon-btn ghost" title="Đăng xuất" style="display: none">
@@ -47,6 +47,19 @@
 
         <div id="roombar" class="roombar" style="display: none">
           <span id="room-badge" class="badge"></span>
+        </div>
+
+        <!-- Chon thiet bi phat (app Spotify cua ban) -->
+        <div id="device-card" class="card" style="display: none">
+          <div class="card-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="head-ico"><rect x="4" y="3" width="16" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <h3>Thiết bị phát</h3>
+          </div>
+          <div class="searchbar">
+            <select id="device-select"></select>
+            <button id="device-refresh" class="mini">Làm mới</button>
+          </div>
+          <p class="muted empty">Nhạc sẽ phát trên app Spotify bạn chọn (điện thoại/máy tính), không phát trong trình duyệt. Mở app Spotify, phát thử 1 bài, rồi bấm Làm mới.</p>
         </div>
 
         <!-- Now playing -->

@@ -362,6 +362,19 @@ async function playTrack(uri, positionMs, play) {
   }
 
   if (!play) await api(`me/player/pause?device_id=${dev}`, { method: 'PUT' });
+
+  // Xac minh: doc lai xem Spotify THUC SU dang phat gi (bien chan doan ro rang).
+  setTimeout(async () => {
+    const chk = await api('me/player')
+      .then((x) => (x.status === 204 ? null : x.json()))
+      .catch(() => null);
+    if (!chk || !chk.item) {
+      log('↳ Sau 1.2s: Spotify KHÔNG phát gì — lệnh bị bỏ qua.');
+    } else {
+      const ok = chk.item.uri === uri ? '✓ đúng bài' : '✗ SAI bài (vẫn bài cũ)';
+      log(`↳ Sau 1.2s: "${chk.item.name}" · ${chk.is_playing ? 'đang phát' : 'dừng'} · ${chk.device?.name} · ${ok}`);
+    }
+  }, 1200);
 }
 
 // ---------- Listener: khop theo host (chi khi doi bai / play-pause) ----------

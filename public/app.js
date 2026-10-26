@@ -103,6 +103,15 @@ async function showApp() {
 // ---------- Thiet bi Spotify ----------
 async function fetchDevices() {
   const res = await api('me/player/devices');
+  if (res.status === 401 || res.status === 403) {
+    const j = await res.json().catch(() => ({}));
+    const msg = j.error?.message || res.status;
+    log('Lỗi quyền (' + res.status + '): ' + msg);
+    $('status').textContent =
+      'Lỗi ' + res.status + ': ' + msg +
+      ' — tài khoản này có thể CHƯA được thêm vào Developer Dashboard (User Management). Báo chủ app thêm email của bạn.';
+    return;
+  }
   const data = await res.json().catch(() => ({}));
   const devices = data.devices || [];
   const sel = $('device-select');

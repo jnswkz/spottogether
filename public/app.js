@@ -166,7 +166,7 @@ function bindSocket() {
   socket.on('sync', (state) => {
     if (!isHost) applySync(state);
   });
-  socket.on('play-track', (track) => playTrack(track.uri, 0, true));
+  socket.on('play-track', (track) => playTrack(track.uri, 0, true, track.albumUri));
 }
 
 // ---------- Host: doc trang thai app Spotify ----------
@@ -223,6 +223,7 @@ async function pollHost() {
       name: cur.name,
       artists: cur.artists.map((a) => a.name).join(', '),
       image: cur.album.images?.[0]?.url,
+      albumUri: cur.album?.uri,
     });
   }
 }
@@ -255,6 +256,7 @@ function toTrack(t) {
     name: t.name,
     artists: t.artists.map((a) => a.name).join(', '),
     image: t.album.images?.[2]?.url || t.album.images?.[0]?.url || '',
+    albumUri: t.album?.uri,
   };
 }
 function trackRow(tr, actions) {
@@ -287,7 +289,7 @@ $('results').addEventListener('click', (e) => {
     log('Đã thêm vào hàng đợi: ' + tr.name);
   } else if (playBtn && isHost) {
     const tr = window.__results[+playBtn.dataset.play];
-    playTrack(tr.uri, 0, true);
+    playTrack(tr.uri, 0, true, tr.albumUri);
   }
 });
 
@@ -337,7 +339,7 @@ function renderMembers(room) {
 }
 
 // ---------- Phat tren thiet bi da chon ----------
-async function playTrack(uri, positionMs, play) {
+async function playTrack(uri, positionMs, play, contextUri) {
   const dev = selectedDevice();
   if (!dev) {
     $('status').textContent = 'Hãy chọn thiết bị Spotify để phát (mở app Spotify rồi Làm mới).';
@@ -345,12 +347,15 @@ async function playTrack(uri, positionMs, play) {
   }
 
   log(`Phát "${uri.split(':').pop()}" → thiết bị ${dev.slice(0, 8)}…`);
-  // Phat bai tren thiet bi da chon (thiet bi can dang active: mo app Spotify
-  // va phat tay 1 bai truoc). device_id trong URL se tu chuyen phat ve dung may.
+  // QUAN TRONG: nhieu client desktop TU CHOI "play bai le" (uris) — tra 204 nhung
+  // dung playback. Dung context_uri (album cua bai) + offset toi dung bai thi chay.
+  const body = contextUri
+    ? { context_uri: contextUri, offset: { uri }, position_ms: Math.max(0, positionMs) }
+    : { uris: [uri], position_ms: Math.max(0, positionMs) };
   const r = await api(`me/player/play?device_id=${dev}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uris: [uri], position_ms: Math.max(0, positionMs) }),
+    body: JSON.stringify(body),
   });
   if (r.status >= 400) {
     const j = await r.json().catch(() => ({}));
@@ -390,7 +395,7 @@ async function applySync(state) {
   if (changedTrack) {
     const elapsed = state.isPlaying ? Date.now() - state.serverTs : 0;
     log('Đồng bộ bài mới @ ' + ((state.positionMs + elapsed) / 1000).toFixed(1) + 's');
-    await playTrack(state.trackUri, state.positionMs + elapsed, state.isPlaying);
+    await playTrack(state.trackUri, state.positionMs + elapsed, state.isPlaying, state.albumUri);
   } else if (changedPlay) {
     const dev = selectedDevice();
     if (!dev) return;
